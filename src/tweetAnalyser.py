@@ -44,8 +44,60 @@ def addColumns(conn, cur):
     cur.execute("ALTER TABLE tweets ADD COLUMN neu FLOAT, ADD COLUMN neg FLOAT, ADD COLUMN pos FLOAT, ADD COLUMN compound FLOAT")
     conn.commit()
 
+def addConspiracyTable(conn, cur):
+    cur.execute("CREATE TABLE conspiracies ( id SERIAL PRIMARY KEY, value varchar(50))")
+    conn.commit()
+
+# def addConspiracyHashtagsTable(conn, cur):
+#     cur.execute("""CREATE TABLE conspiracy_hashtags(
+# 	    id SERIAL PRIMARY KEY,
+# 	    conspiracy_id int,
+# 	    hashtag_id int,
+# 	    FOREIGN KEY(conspiracy_id) REFERENCES conspiracies(id),
+# 	    FOREIGN KEY(hashtag_id) REFERENCES hashtags(id))"""
+#     )
+#     conn.commit()
+
+def fillConspiracyTable(cur, data):
+    data = [(value,) for value in data]
+    cur.executemany("INSERT INTO conspiracies(value) VALUES(%s)", data)
+
+def addTweetConspiracyTable(conn, cur):
+    cur.execute("""CREATE TABLE tweet_conspiracies (
+        id SERIAL PRIMARY KEY,
+        tweet_id varchar(20) NOT NULL,
+        conspiracy_id int NOT NULL,
+        FOREIGN KEY(tweet_id) REFERENCES tweets(id),
+        FOREIGN KEY(conspiracy_id) REFERENCES conspiracies(id)
+        )"""
+    )
+    conn.commit()
+
+
 def insertSentiment(tweetId, dict, cur):
     cur.execute("UPDATE tweets SET neu = %s, neg = %s, pos = %s, compound = %s WHERE tweets.id = %s;", (dict['neu'], dict['neg'], dict['pos'], dict['compound'], tweetId))
+
+def insertTweetConspiracy(cur):
+    cur.execute("""INSERT INTO tweet_conspiracies(tweet_id, conspiracy_id)
+        SELECT DISTINCT sub.id, sub.conspiracy FROM (SELECT t.id, CASE 
+        WHEN hash.value ILIKE '%deepstate%' THEN (SELECT id FROM conspiracies WHERE value ILIKE  '%Deepstate%')
+        WHEN hash.value ILIKE '%qanon%' OR hash.value ILIKE '%MAGA%' OR hash.value ILIKE '%WWG1WGA%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Qanon%')
+        WHEN hash.value ILIKE '%Agenda21%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%New world order%')
+        WHEN hash.value ILIKE '%CCPVirus%' OR hash.value ILIKE '%ChinaLiedPeopleDied%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Chinese lab%')
+        WHEN hash.value ILIKE '%ClimateChangeHoax%' OR hash.value ILIKE '%GlobalWarmingHoax%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Global warming%')
+        WHEN hash.value ILIKE '%SorosVirus%' OR hash.value ILIKE '%BillGates%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%microchipping%')
+        WHEN hash.value ILIKE '%5gCoronavirus%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%5G%')
+        WHEN hash.value ILIKE '%moonhoax%' OR hash.value ILIKE '%moonLandingHoax%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Moon landing%')
+        WHEN hash.value ILIKE '%911%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%9/11%')
+        WHEN hash.value ILIKE '%pizzaGate%' OR hash.value ILIKE '%pedoGate%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Pizzagate%')
+        WHEN hash.value ILIKE '%chemtrails%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Chemtrails%')
+        WHEN hash.value ILIKE '%flatEarth%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%FlatEarth%')
+        WHEN hash.value ILIKE '%illuminati%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Illuminati%')
+        WHEN hash.value ILIKE '%reptilians%' THEN (SELECT id FROM conspiracies WHERE value ILIKE '%Reptilian%')
+        END AS conspiracy FROM tweets as t
+        JOIN tweet_hashtags as th ON t.id = th.tweet_id JOIN hashtags as hash ON th.hashtag_id = hash.id WHERE compound is not NULL) as sub
+        WHERE sub.conspiracy IS NOT NULL;"""
+    )
 
 def executeSelect(conn):
     start = time.time();
@@ -79,8 +131,8 @@ def executeSelect(conn):
                               ])""", conn)
     print("Number of rows: ", df.shape[0])
     end = time.time();
-    print("Select completed, elapsed time was ", end - start, "\n");
-    start = time.time();
+    # print("Select completed, elapsed time was ", end - start, "\n");
+    start = time.time()
     cur = conn.cursor()
     #uloha 2
     #############################################
@@ -92,22 +144,29 @@ def executeSelect(conn):
     #############################################
     #uloha3
     #############################################
-    #CREATE TABLE conspiracies ( id int NOT NULL, value varchar(50), PRIMARY KEY (ID))
-    #CREATE TABLE tweet_conspiracies (
-    #    id int NOT NULL,
-    #    tweet_id varchar(20) NOT NULL,
-    #    conspiracy_id int NOT NULL,
-    #    PRIMARY KEY(id),
-    #    FOREIGN KEY(tweet_id) REFERENCES tweets(id),
-    #    FOREIGN KEY(conspiracy_id) REFERENCES conspiracies(id)
-    #)
-    #fill the table with conspiracies now
-    #SELECT COUNT(*) FROM tweets WHERE compound is not NULL
-    # theories = ['Deepstate', 'Qanon', 'New World Order', 'The virus escaped from a Chinese lab ', 'Global Warming is HOAX', 'COVID19 and microchipping', 'COVID19 is preaded by 5G', 'Moon landing is fake '
-    # , '9/11 was inside job', 'Pizzagate conspiracy theory', 'Chemtrails', 'Illuminati', 'Reptilian conspiracy theory']
-    # INSERT INTO conspiracies(id, value) VALUES %s %s
-    #cez df prejdem a podla hastagov mapujem do novej tabulky idcka conspiracies a tweets (many to many)
+    # try:
+    #     addConspiracyTable(conn, cur)
+    #     addTweetConspiracyTable(conn, cur) 
+    # except:
+    #     print('tables already exist.')
+
+    # fillConspiracyTable(
+    #     cur, ['Deepstate', 'Qanon', 'New World Order', 'The virus escaped from a Chinese lab ', 'Global Warming is HOAX'
+    #     , 'COVID19 and microchipping', 'COVID19 is spreaded by 5G', 'Moon landing is fake', '9/11 was an inside job'
+    #     , 'Pizzagate conspiracy theory', 'Chemtrails' , 'FlatEarth', 'Illuminati', 'Reptilian conspiracy theory']
+    # )
+    start = time.time()
+    insertTweetConspiracy(cur)
+    end = time.time();
+    print("Insert many-to-many completed, elapsed time was ", end - start, "\n");
+    ##create table to map hashtags to theories
+    #then INSERT a SELECT into tweet_conspiracies table...
+
+
     #############################################
+
+
+
     #uloha4
     #############################################
     #BLABLABLA
@@ -124,16 +183,6 @@ def executeSelect(conn):
     cur.close()
     end = time.time()
     print("Update completed, elapsed time was ", end - start, "\n")
-    #df = df.apply(lambda x: insertSentiment(x['id'], sentiment(x['content']), conn), axis = 1)
-    #print(df.to_string())
-
-    # cur = conn.cursor()
-    # cur.execute("SELECT * from tweets LIMIT 100")
-    # rows = cur.fetchall()
-    # df = pd.DataFrame(columns=['id', 'content'])
-    # for i, row in enumerate(rows):
-    #     df = df.append([row[0], row[1]])
-    # print(df.to_string())
 
 #main
 if __name__ == "__main__":
