@@ -22,10 +22,11 @@ def connect():
     finally:
         return conn;
 
-def handleTweet(tweetId, tweet, conn):
+def handleTweet(tweetId, tweet, cur, sia):
     tweet = cleanTweet(tweet)
-    dict = sentiment(tweet)
-    insertSentiment(tweetId, dict, conn)
+    dict = sentiment(tweet, sia)
+    insertSentiment(tweetId, dict, cur)
+
 
 def cleanTweet(tweet):
     #remove all emoji
@@ -34,23 +35,17 @@ def cleanTweet(tweet):
     tweet = re.sub(r'#([a-zA-Z0-9_]+)|@([a-zA-Z0-9_]+)', '', tweet)
     return tweet;
 
-def sentiment(tweet):
-    sia = SentimentIntensityAnalyzer()
+def sentiment(tweet, sia):
     dict = sia.polarity_scores(tweet)
     return dict
 
-def addColumns(conn):
+def addColumns(conn, cur):
     #execute only once!
-    cur = conn.cursor()
     cur.execute("ALTER TABLE tweets ADD COLUMN neu FLOAT, ADD COLUMN neg FLOAT, ADD COLUMN pos FLOAT, ADD COLUMN compound FLOAT")
     conn.commit()
-    cur.close()
 
-def insertSentiment(tweetId, dict, conn):
-    cur = conn.cursor();
+def insertSentiment(tweetId, dict, cur):
     cur.execute("UPDATE tweets SET neu = %s, neg = %s, pos = %s, compound = %s WHERE tweets.id = %s;", (dict['neu'], dict['neg'], dict['pos'], dict['compound'], tweetId))
-    conn.commit();
-    cur.close();
 
 def executeSelect(conn):
     start = time.time();
@@ -86,8 +81,47 @@ def executeSelect(conn):
     end = time.time();
     print("Select completed, elapsed time was ", end - start, "\n");
     start = time.time();
-    #df['content'] = df['content'].apply(lambda x: cleanTweet(x)) 
-    df = df.apply(lambda x: handleTweet(x['id'], x['content'], conn), axis = 1)
+    cur = conn.cursor()
+    #uloha 2
+    #############################################
+    #runtime 1hour
+    #sia = SentimentIntensityAnalyzer()
+    #addColumns(conn, cur)
+    #df.apply(lambda x: handleTweet(x['id'], x['content'], cur, sia), axis = 1)
+    #DONE
+    #############################################
+    #uloha3
+    #############################################
+    #CREATE TABLE conspiracies ( id int NOT NULL, value varchar(50), PRIMARY KEY (ID))
+    #CREATE TABLE tweet_conspiracies (
+    #    id int NOT NULL,
+    #    tweet_id varchar(20) NOT NULL,
+    #    conspiracy_id int NOT NULL,
+    #    PRIMARY KEY(id),
+    #    FOREIGN KEY(tweet_id) REFERENCES tweets(id),
+    #    FOREIGN KEY(conspiracy_id) REFERENCES conspiracies(id)
+    #)
+    #fill the table with conspiracies now
+    #SELECT COUNT(*) FROM tweets WHERE compound is not NULL
+    # theories = ['Deepstate', 'Qanon', 'New World Order', 'The virus escaped from a Chinese lab ', 'Global Warming is HOAX', 'COVID19 and microchipping', 'COVID19 is preaded by 5G', 'Moon landing is fake '
+    # , '9/11 was inside job', 'Pizzagate conspiracy theory', 'Chemtrails', 'Illuminati', 'Reptilian conspiracy theory']
+    # INSERT INTO conspiracies(id, value) VALUES %s %s
+    #cez df prejdem a podla hastagov mapujem do novej tabulky idcka conspiracies a tweets (many to many)
+    #############################################
+    #uloha4
+    #############################################
+    #BLABLABLA
+    #############################################
+    #uloha5
+    #############################################
+    #BLABLABLA
+    #############################################
+    #uloha6
+    #############################################
+    #BLABLABLA
+    #############################################
+    conn.commit()
+    cur.close()
     end = time.time()
     print("Update completed, elapsed time was ", end - start, "\n")
     #df = df.apply(lambda x: insertSentiment(x['id'], sentiment(x['content']), conn), axis = 1)
