@@ -5,7 +5,13 @@ import pandas as pd
 import pandas.io.sql as sqlio
 import re
 import time
-#import swifter
+import swifter
+import matplotlib.pyplot as plt
+import seaborn as sns
+import datetime
+from dateutil.relativedelta import relativedelta
+from tabulate import tabulate
+
 
 def connect():
     #connect to postgres PDT database
@@ -47,16 +53,6 @@ def addColumns(conn, cur):
 def addConspiracyTable(conn, cur):
     cur.execute("CREATE TABLE conspiracies ( id SERIAL PRIMARY KEY, value varchar(50))")
     conn.commit()
-
-# def addConspiracyHashtagsTable(conn, cur):
-#     cur.execute("""CREATE TABLE conspiracy_hashtags(
-# 	    id SERIAL PRIMARY KEY,
-# 	    conspiracy_id int,
-# 	    hashtag_id int,
-# 	    FOREIGN KEY(conspiracy_id) REFERENCES conspiracies(id),
-# 	    FOREIGN KEY(hashtag_id) REFERENCES hashtags(id))"""
-#     )
-#     conn.commit()
 
 def fillConspiracyTable(cur, data):
     data = [(value,) for value in data]
@@ -129,53 +125,100 @@ def insertTweetConspiracy(cur):
         WHERE sub.conspiracy IS NOT NULL;"""
     )
 
-def generateGraphs(cur):
-    cur.execute("SELECT week, year")
+def generateGraphs(conn):
+    for i in range(1, 15):
+        df = sqlio.read_sql_query("SELECT week, year, tweet_count, value FROM conspiracies_in_weeks as ciw JOIN conspiracies as c ON c.id = ciw.conspiracy_id WHERE ciw.conspiracy_id = {}".format(i), conn)
+        df['date'] = df.apply(lambda x: datetime.date(int(x['year']), 1, 1) + relativedelta(weeks =+ int(x['week'])), axis = 1)
+        plot = sns.lineplot(data = df, x = 'date', y = "tweet_count")
+        plot.set_title(df.at[0, 'value'])
+        plt.xlabel('Date', fontsize = 10)
+        plt.ylabel('Number of tweets', fontsize = 10)
+        plt.xticks(fontsize = 6, rotation=45)
+        plt.subplots_adjust(bottom=0.15)
+        if len(df['date']) > 20:
+            for index, label in enumerate(plot.get_xticklabels()):
+                if index % 2 == 0:
+                    label.set_visible(True)
+                else:
+                    label.set_visible(False)
+        plt.savefig("graphs/{}.png".format(i), dpi = 300)
+        plt.clf()
+
+def getTop10Accounts(conn):
+    for i in range(1,15):
+        df = sqlio.read_sql_query("""SELECT a.id, a.name, a.screen_name, c.value as conspiracy, count(*) tweet_count FROM accounts as a 
+                JOIN tweets as t on t.author_id = a.id 
+                JOIN tweet_conspiracies as tc ON t.id = tc.tweet_id 
+                JOIN conspiracies as c on c.id = tc.conspiracy_id
+                WHERE c.id = {} AND (t.compound >= 0.5 OR t.compound <= -0.5)
+                GROUP BY a.id, a.name, a.screen_name, c.value
+                ORDER BY count(*) DESC
+                LIMIT 10;""".format(i), 
+            conn)
+        print("Conspiracy Theory: {}".format(df.at[0, 'conspiracy']))
+        print(tabulate(df, headers = 'keys', tablefmt = 'psql'))
+        print("\n")
+
+def getTop10Hashtags(conn):
+    for i in range(1,15):
+        df = sqlio.read_sql_query("""SELECT h.id, h.value, c.value as conspiracy, count(*) usage_count FROM hashtags as h
+            JOIN tweet_hashtags as th ON th.hashtag_id= h.id
+            JOIN tweets as t ON t.id = th.tweet_id
+            JOIN tweet_conspiracies as tc ON tc.tweet_id = t.id
+            JOIN conspiracies as c ON c.id = tc.conspiracy_id
+            WHERE c.id = {} AND (t.compound >= 0.5 OR t.compound <= -0.5)
+            GROUP BY h.id, h.value, c.value
+            ORDER BY count(*) DESC
+            LIMIT 10;""".format(i), 
+            conn)
+        print("Conspiracy Theory: {}".format(df.at[0, 'conspiracy']))
+        print(tabulate(df, headers = 'keys', tablefmt = 'psql'))
+        print("\n")
+        
+
 
 def execute(conn):
-    # start = time.time();
-    # df = sqlio.read_sql_query("""SELECT DISTINCT(t.id), t.content FROM tweets as t
-    #                           JOIN tweet_hashtags as th ON t.id=th.tweet_id
-    #                           JOIN hashtags as h ON th.hashtag_id=h.id
-    #                           WHERE h.value ILIKE any(array[
-    #                               '%DeepstateVirus%',
-    #                               '%DeepStateFauci%',
-    #                               '%DeepStateVaccine%',
-    #                               '%QAnon%',
-    #                               '%Agenda21%',
-    #                               '%CCPVirus%',
-    #                               '%ClimateChangeHoax%',
-    #                               '%GlobalWarmingHoax%',
-    #                               '%ChinaLiedPeopleDied%',
-    #                               '%5GCoronavirus%',
-    #                               '%SorosVirus%',
-    #                               '%MAGA%',
-    #                               '%WWG1WGA%',
-    #                               '%Chemtrails%',
-    #                               '%flatEarth%',
-    #                               '%MoonLandingHoax%',
-    #                               '%moonhoax%',
-    #                               '%911truth%',
-    #                               '%911insidejob%',
-    #                               '%illuminati%',
-    #                               '%reptilians%',
-    #                               '%pizzaGateIsReal%',
-    #                               '%PedoGateIsReal%'
-    #                           ])""", conn)
-    # print("Number of rows: ", df.shape[0])
-    # end = time.time();
-    # print("Select completed, elapsed time was ", end - start, "\n");
-    # start = time.time()
     cur = conn.cursor()
-
-
     #uloha 2
     #############################################
-    #runtime 1hour
-    #sia = SentimentIntensityAnalyzer()
-    #addColumns(conn, cur)
-    #df.apply(lambda x: handleTweet(x['id'], x['content'], cur, sia), axis = 1)
-    #DONE
+    # try:
+    #     start = time.time();
+    #     df = sqlio.read_sql_query("""SELECT DISTINCT(t.id), t.content FROM tweets as t
+    #                             JOIN tweet_hashtags as th ON t.id=th.tweet_id
+    #                             JOIN hashtags as h ON th.hashtag_id=h.id
+    #                             WHERE h.value ILIKE any(array[
+    #                                 '%DeepstateVirus%',
+    #                                 '%DeepStateFauci%',
+    #                                 '%DeepStateVaccine%',
+    #                                 '%QAnon%',
+    #                                 '%Agenda21%',
+    #                                 '%CCPVirus%',
+    #                                 '%ClimateChangeHoax%',
+    #                                 '%GlobalWarmingHoax%',
+    #                                 '%ChinaLiedPeopleDied%',
+    #                                 '%5GCoronavirus%',
+    #                                 '%SorosVirus%',
+    #                                 '%MAGA%',
+    #                                 '%WWG1WGA%',
+    #                                 '%Chemtrails%',
+    #                                 '%flatEarth%',
+    #                                 '%MoonLandingHoax%',
+    #                                 '%moonhoax%',
+    #                                 '%911truth%',
+    #                                 '%911insidejob%',
+    #                                 '%illuminati%',
+    #                                 '%reptilians%',
+    #                                 '%pizzaGateIsReal%',
+    #                                 '%PedoGateIsReal%'
+    #                             ])""", conn)
+    #     print("Number of rows: ", df.shape[0])
+    #     end = time.time();
+    #     print("Select completed, elapsed time was ", end - start, "\n");
+    #     sia = SentimentIntensityAnalyzer()
+    #     addColumns(conn, cur)
+    #     df.swifter.apply(lambda x: handleTweet(x['id'], x['content'], cur, sia), axis = 1)
+    # except Exception as e:
+    #     print(e)
     #############################################
 
 
@@ -184,46 +227,64 @@ def execute(conn):
     # try:
     #     addConspiracyTable(conn, cur)
     #     addTweetConspiracyTable(conn, cur) 
-    # except:
-    #     print('tables already exist.')
-
-    # fillConspiracyTable(
-    #     cur, ['Deepstate', 'Qanon', 'New World Order', 'The virus escaped from a Chinese lab ', 'Global Warming is HOAX'
-    #     , 'COVID19 and microchipping', 'COVID19 is spreaded by 5G', 'Moon landing is fake', '9/11 was an inside job'
-    #     , 'Pizzagate conspiracy theory', 'Chemtrails' , 'FlatEarth', 'Illuminati', 'Reptilian conspiracy theory']
-    # )
-    #start = time.time()
-    #insertTweetConspiracy(cur)
-    #end = time.time();
-    #print("Insert many-to-many completed, elapsed time was ", end - start, "\n");
-    #DONE
+    #     fillConspiracyTable(
+    #         cur, ['Deepstate', 'Qanon', 'New World Order', 'The virus escaped from a Chinese lab ', 'Global Warming is HOAX'
+    #         , 'COVID19 and microchipping', 'COVID19 is spreaded by 5G', 'Moon landing is fake', '9/11 was an inside job'
+    #         , 'Pizzagate conspiracy theory', 'Chemtrails' , 'FlatEarth', 'Illuminati', 'Reptilian conspiracy theory']
+    #     )
+    #     start = time.time()
+    #     insertTweetConspiracy(cur)
+    #     end = time.time();
+    #     print("Insert many-to-many completed, elapsed time was ", end - start, "\n");
+    # except Exception as e:
+    #     print(e)
     #############################################
-
-
 
     #uloha4
     #############################################
-    start = time.time()
-    
-    try:
-        addConspiracyInWeeksTable(conn, cur)
-        print("Conspiracy in weeks table created")
-        fillConspiracyInWeeksTable(cur)
-        conn.commit()
-        end = time.time();
-        print("Conspiracy in weeks table filled, elapsed time was ", end - start, "\n");
-    except:
-        print("Drop the table and try again.")
-    
-    #generateGraphs(cur)
+    # try:
+    #     start = time.time()
+    #     addConspiracyInWeeksTable(conn, cur)
+    #     print("Conspiracy in weeks table created")
+    #     fillConspiracyInWeeksTable(cur)
+    #     conn.commit()
+    #     end = time.time();
+    #     print("Conspiracy in weeks table filled, elapsed time was ", end - start, "\n");
+    # except Exception as e:
+    #     print(e)
+    # print("Generating graphs...")
+    # try:
+    #     generateGraphs(conn)
+    #     print("Graphs generated")
+    #     print("Task 4 done")
+    # except Exception as e:
+    #     print(e)
     #############################################
+
     #uloha5
     #############################################
-    #BLABLABLA
+
+    # try:
+    #     start = time.time()
+    #     getTop10Accounts(conn)
+    #     end = time.time();
+    #     print("Top 10 accounts for each conspiracy theory obtained, elapsed time was ", end - start, "\n");
+    #     print("TASK 5 DONE")
+    # except Exception as e:
+    #     print(e)
+
     #############################################
+
     #uloha6
     #############################################
-    #BLABLABLA
+    try:
+        start = time.time()
+        getTop10Hashtags(conn)
+        end = time.time();
+        print("Top 10 hashtags for each conspiracy theory obtained, elapsed time was ", end - start, "\n");
+        print("TASK 6 DONE")
+    except Exception as e:
+        print(e)
     #############################################
     conn.commit()
     cur.close()
